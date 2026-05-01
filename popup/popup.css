@@ -224,12 +224,50 @@ input:checked + .slider:before {
   font-weight: 600;
 }
 
+.preset-ai-voice {
+  margin-top: 6px;
+  font-size: 13px;
+  font-weight: 700;
+  color: #fff5b8;
+  letter-spacing: 0.3px;
+  display: none;
+}
+
+.preset-ai.selected .preset-ai-voice:not(:empty),
+.preset-ai.thinking .preset-ai-voice:not(:empty) {
+  display: block;
+}
+
 .preset-ai-detail {
   margin-top: 4px;
   font-size: 9px;
   color: #999;
   font-style: italic;
   line-height: 1.4;
+}
+
+.preset-ai-source {
+  margin-top: 6px;
+  font-size: 9px;
+  font-style: italic;
+  letter-spacing: 0.3px;
+  display: none;
+}
+
+.preset-ai-source:not(:empty) {
+  display: block;
+}
+
+.preset-ai-source.live {
+  color: #6ee7a8;
+}
+
+.preset-ai-source.fallback {
+  color: #f59e6e;
+}
+
+.preset-ai-source.error {
+  color: #ff7a7a;
 }
 
 .custom-row {

@@ -39,17 +39,18 @@
   // Time/date words we never want to multiply (e.g. "3 days ago", "12 min")
   const TIME_BLOCK = /\b(ago|hr|hrs|min|mins|sec|secs|day|days|month|months|year|years|hour|hours|minute|minutes|just\s+now|·\s*\d+|st|nd|rd|th)\b/i;
 
-  // URL-pathname patterns that are unconditionally in scope. /in/ was
-  // intentionally removed: it caught the activity-feed post-card inline
-  // impression badges, producing cross-surface inconsistency (same post
-  // shows a different inflated number on analytics page vs. activity feed
-  // because LinkedIn reports different real aggregations there). The
-  // profile-page private dashboard tile still inflates via the "Analytics"
-  // / "private to you" container-hint match in ancestorHasHint.
+  // URL-pathname patterns that are unconditionally in scope. /in/ is
+  // included so the activity-feed inline post-card "XXX impressions"
+  // badges on the user's own profile inflate (these are private to the
+  // viewer — only the profile owner sees these badges). The cross-surface
+  // jump between analytics page and feed is acceptable because both views
+  // report different real aggregations on real LinkedIn — a quirk of the
+  // platform, not a tell.
   const ALLOWLISTED_PATHS = [
     /\/analytics(\/|$|\?)/,
     /\/me\/profile-views/,
     /\/dashboard\//,
+    /^\/in\//,
   ];
 
   // Text we look for on ancestor headings/labels to identify scope when path alone
