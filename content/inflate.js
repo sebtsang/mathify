@@ -38,11 +38,15 @@
   // Time/date words we never want to multiply (e.g. "3 days ago", "12 min")
   const TIME_BLOCK = /\b(ago|hr|hrs|min|mins|sec|secs|day|days|month|months|year|years|hour|hours|minute|minutes|just\s+now|·\s*\d+|st|nd|rd|th)\b/i;
 
-  // URL-pathname patterns that are unambiguously private analytics surfaces.
+  // URL-pathname patterns that are in scope. /in/ is broad but safe: the
+  // ANALYTICS_KEYWORDS gate restricts which numbers actually inflate, and
+  // private-keyword phrases ("post impressions", "search appearances") only
+  // appear inside the user's own private dashboard tile.
   const ALLOWLISTED_PATHS = [
     /\/analytics(\/|$|\?)/,
     /\/me\/profile-views/,
     /\/dashboard\//,
+    /^\/in\//,
   ];
 
   // Text we look for on ancestor headings/labels to identify scope when path alone
@@ -76,9 +80,9 @@
           if (ht && hints.some((hh) => ht.includes(hh))) return true;
         }
         // Container-text fallback: look for the unique "Private to you"
-        // marker that LinkedIn places under private analytics tiles.
+        // marker LinkedIn places under private analytics tiles.
         const ct = cur.textContent || "";
-        if (ct.length < 1500 && /private to you/i.test(ct)) {
+        if (ct.length < 5000 && /private to you/i.test(ct)) {
           return true;
         }
       }
@@ -90,7 +94,7 @@
 
   function isInAllowlistedScope(node) {
     if (pathInScope()) return true;
-    return ancestorHasHint(node.parentElement, ALLOWLISTED_CONTAINER_HINTS, 8);
+    return ancestorHasHint(node.parentElement, ALLOWLISTED_CONTAINER_HINTS, 15);
   }
 
   function hasNearbyKeyword(el) {

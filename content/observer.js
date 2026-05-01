@@ -24,9 +24,7 @@
       if (!enabled) return;
       try {
         M.inflate(document.body, currentMult);
-        // viewers + insights injection (no-ops until H3)
         if (window.__mathifyViewers) window.__mathifyViewers.maybeInject();
-        if (window.__mathifyInsights) window.__mathifyInsights.maybeInject();
       } catch (e) {
         console.error("[mathify] observer tick error", e);
       }
@@ -70,7 +68,6 @@
           // Toggle OFF: restore originals.
           M.restore(document.body);
           if (window.__mathifyViewers) window.__mathifyViewers.removeInjected();
-          if (window.__mathifyInsights) window.__mathifyInsights.removeInjected();
           return;
         }
         if (prevMult !== currentMult || (!wasEnabled && enabled)) {
@@ -97,7 +94,6 @@
           if (enabled && !newEnabled) {
             M.restore(document.body);
             if (window.__mathifyViewers) window.__mathifyViewers.removeInjected();
-            if (window.__mathifyInsights) window.__mathifyInsights.removeInjected();
           } else if (newMult !== currentMult || (!enabled && newEnabled)) {
             M.restore(document.body);
           }

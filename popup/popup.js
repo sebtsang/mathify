@@ -4,7 +4,6 @@ const els = {
   customMult: document.getElementById("customMult"),
   customOut: document.getElementById("customOut"),
   injectViewers: document.getElementById("injectViewers"),
-  injectInsights: document.getElementById("injectInsights"),
   presets: document.querySelectorAll(".preset"),
   statLies: document.getElementById("statLies"),
   statImpressions: document.getElementById("statImpressions"),
@@ -15,7 +14,6 @@ const DEFAULTS = {
   enabled: true,
   multiplier: 100,
   injectViewers: true,
-  injectInsights: true,
   liesToldSession: 0,
   inflatedImpressionsSession: 0,
 };
@@ -27,7 +25,6 @@ function load() {
     els.customMult.value = s.multiplier;
     els.customOut.innerHTML = `${formatMult(s.multiplier)}&times;`;
     els.injectViewers.checked = s.injectViewers;
-    els.injectInsights.checked = s.injectInsights;
     els.statLies.textContent = (s.liesToldSession || 0).toLocaleString();
     els.statImpressions.textContent = (s.inflatedImpressionsSession || 0).toLocaleString();
     selectPreset(s.multiplier);
@@ -85,10 +82,6 @@ els.presets.forEach((p) => {
 
 els.injectViewers.addEventListener("change", () => {
   chrome.storage.local.set({ injectViewers: els.injectViewers.checked }, broadcast);
-});
-
-els.injectInsights.addEventListener("change", () => {
-  chrome.storage.local.set({ injectInsights: els.injectInsights.checked }, broadcast);
 });
 
 document.addEventListener("DOMContentLoaded", load);

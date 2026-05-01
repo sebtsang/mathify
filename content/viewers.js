@@ -111,8 +111,11 @@
       return;
     }
     if (injecting) return;
-    if (document.querySelector(`[${MARK}]`)) return;
-    if (!window.__mathifyGemini) return;
+    if (document.querySelector(`[${MARK}]`)) return; // already injected
+    if (!window.__mathifyGemini) {
+      console.log("[mathify] viewers: gemini not loaded yet");
+      return;
+    }
 
     const settings = await new Promise((r) =>
       chrome.storage.local.get({ enabled: true, injectViewers: true }, r)
@@ -126,21 +129,26 @@
     try {
       const main = findMain();
       if (!main) {
-        console.log("[mathify] viewers: no main element found");
+        console.warn("[mathify] viewers: no main element found on", location.pathname);
         return;
       }
       const viewers = await window.__mathifyGemini.getFakeViewers();
       if (!viewers || !viewers.length) {
-        console.log("[mathify] viewers: empty viewer list");
+        console.warn("[mathify] viewers: empty viewer list");
         return;
       }
-      // double-check after async hop: still on the right page, no race injection
       if (!shouldRun()) return;
       if (document.querySelector(`[${MARK}]`)) return;
       inject(main, viewers);
-      console.log("[mathify] viewers: injected", viewers.length);
+      console.log(
+        "[mathify] viewers: injected",
+        viewers.length,
+        "into",
+        main.tagName,
+        main.className || "(no class)"
+      );
     } catch (e) {
-      console.warn("[mathify] viewers inject error", e);
+      console.error("[mathify] viewers inject error", e);
     } finally {
       injecting = false;
     }
