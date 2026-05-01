@@ -1,6 +1,223 @@
-// content/inflate.js — H0 stub. Real implementation in H1.
+// content/inflate.js
+// Core inflater. Walks text nodes inside allowlisted private-analytics surfaces
+// and multiplies numbers near analytics keywords. Trusts text content, never
+// CSS class hashes (LinkedIn rotates them).
 (function () {
   if (window.__mathifyInflateLoaded) return;
   window.__mathifyInflateLoaded = true;
-  console.log("[mathify] content script loaded on", location.href);
+
+  // Match: "1,234,567" / "1234" / "1.2K" / "3M"
+  const NUM_RE = /\b\d{1,3}(?:,\d{3})+|\b\d+(?:\.\d+)?[KM]?\b/g;
+
+  const ANALYTICS_KEYWORDS = /(impressions?|members?\s+reached|profile\s+viewers?|followers?\s+gained|search\s+appearances?|post\s+impressions?|\bsaves?\b|\bsends?\b|reactions?|reposts?|comments?|engagements?|views?)/i;
+
+  // Time/date words we never want to multiply (e.g. "3 days ago", "12 min")
+  const TIME_BLOCK = /\b(ago|hr|hrs|min|mins|sec|secs|day|days|month|months|year|years|hour|hours|minute|minutes|just\s+now|·\s*\d+|st|nd|rd|th)\b/i;
+
+  // URL-pathname patterns that are unambiguously private analytics surfaces.
+  const ALLOWLISTED_PATHS = [
+    /\/analytics(\/|$|\?)/,
+    /\/me\/profile-views/,
+    /\/dashboard\//,
+  ];
+
+  // Text we look for on ancestor headings/labels to identify scope when path alone
+  // isn't enough (e.g. on a profile page, the "Your dashboard" tile cluster).
+  const ALLOWLISTED_CONTAINER_HINTS = [
+    "your dashboard",
+    "analytics",
+    "who viewed your profile",
+    "who's viewed your profile",
+    "post impressions",
+    "search appearances",
+    "private to you",
+  ];
+
+  function pathInScope() {
+    return ALLOWLISTED_PATHS.some((re) => re.test(location.pathname));
+  }
+
+  function ancestorHasHint(el, hints, maxHops) {
+    let cur = el;
+    let hops = 0;
+    while (cur && cur !== document.body && hops < maxHops) {
+      const aria = cur.getAttribute && cur.getAttribute("aria-label");
+      const txt = (aria || "").toLowerCase();
+      if (txt && hints.some((h) => txt.includes(h))) return true;
+      // section heading: look at first heading inside this container
+      if (cur.querySelector) {
+        const h = cur.querySelector("h1, h2, h3, h4, h5");
+        if (h) {
+          const ht = (h.textContent || "").toLowerCase();
+          if (ht && hints.some((hh) => ht.includes(hh))) return true;
+        }
+      }
+      cur = cur.parentElement;
+      hops++;
+    }
+    return false;
+  }
+
+  function isInAllowlistedScope(node) {
+    if (pathInScope()) return true;
+    return ancestorHasHint(node.parentElement, ALLOWLISTED_CONTAINER_HINTS, 8);
+  }
+
+  function hasNearbyKeyword(el) {
+    let cur = el;
+    let depth = 0;
+    while (cur && depth < 4) {
+      const txt = cur.textContent || "";
+      if (txt.length < 600 && ANALYTICS_KEYWORDS.test(txt)) return true;
+      cur = cur.parentElement;
+      depth++;
+    }
+    return false;
+  }
+
+  function looksLikeTime(parent) {
+    let cur = parent;
+    let d = 0;
+    while (cur && d < 2) {
+      const t = cur.textContent || "";
+      if (t.length < 200 && TIME_BLOCK.test(t)) return true;
+      cur = cur.parentElement;
+      d++;
+    }
+    return false;
+  }
+
+  function parseNum(s) {
+    s = String(s).trim();
+    if (/[KM]$/i.test(s)) {
+      const mult = s.toUpperCase().endsWith("M") ? 1e6 : 1e3;
+      return parseFloat(s) * mult;
+    }
+    return parseInt(s.replace(/,/g, ""), 10);
+  }
+
+  function formatNum(n, originalHadCompact) {
+    if (!Number.isFinite(n)) return String(n);
+    n = Math.round(n);
+    if (originalHadCompact || n >= 10000) {
+      if (n >= 1e6) {
+        const v = n / 1e6;
+        return (v >= 10 ? Math.round(v) : v.toFixed(1).replace(/\.0$/, "")) + "M";
+      }
+      if (n >= 1e3) {
+        const v = n / 1e3;
+        return (v >= 10 ? Math.round(v) : v.toFixed(1).replace(/\.0$/, "")) + "K";
+      }
+    }
+    return n.toLocaleString("en-US");
+  }
+
+  function isJunkParent(parent) {
+    if (!parent) return true;
+    if (parent.dataset && parent.dataset.mathify === "1") return true;
+    if (parent.closest && parent.closest("[data-mathify-skip]")) return true;
+    const tag = parent.tagName;
+    if (tag === "SCRIPT" || tag === "STYLE" || tag === "NOSCRIPT") return true;
+    if (tag === "TIME") return true; // <time> elements are explicitly temporal
+    return false;
+  }
+
+  function inflate(root, mult) {
+    if (!root || !mult || mult === 1) return 0;
+    let count = 0;
+    let totalImpressionDelta = 0;
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
+      acceptNode: (n) => {
+        if (!n.nodeValue || !n.nodeValue.trim()) return NodeFilter.FILTER_REJECT;
+        return NodeFilter.FILTER_ACCEPT;
+      },
+    });
+    let node;
+    while ((node = walker.nextNode())) {
+      const parent = node.parentElement;
+      if (isJunkParent(parent)) continue;
+      if (looksLikeTime(parent)) continue;
+      if (!isInAllowlistedScope(node)) continue;
+      if (!hasNearbyKeyword(parent)) continue;
+      const text = node.nodeValue;
+      NUM_RE.lastIndex = 0;
+      if (!NUM_RE.test(text)) continue;
+      NUM_RE.lastIndex = 0;
+      const original = text;
+      const replaced = text.replace(NUM_RE, (m) => {
+        const val = parseNum(m);
+        if (!Number.isFinite(val) || val === 0) return m;
+        if (val < 1) return m;
+        const wasCompact = /[KM]$/i.test(m);
+        const newVal = val * mult;
+        totalImpressionDelta += newVal - val;
+        return formatNum(newVal, wasCompact);
+      });
+      if (replaced !== original) {
+        if (!parent.dataset.mathifyOrig) parent.dataset.mathifyOrig = original;
+        node.nodeValue = replaced;
+        parent.dataset.mathify = "1";
+        count++;
+      }
+    }
+    if (count > 0) bumpStats(count, totalImpressionDelta);
+    return count;
+  }
+
+  function restore(root) {
+    if (!root) return;
+    root.querySelectorAll("[data-mathify-orig]").forEach((el) => {
+      for (const n of el.childNodes) {
+        if (n.nodeType === Node.TEXT_NODE && /\d/.test(n.nodeValue)) {
+          n.nodeValue = el.dataset.mathifyOrig;
+          break;
+        }
+      }
+      delete el.dataset.mathify;
+      delete el.dataset.mathifyOrig;
+    });
+  }
+
+  function bumpStats(lieCount, impressionDelta) {
+    chrome.storage.local.get(
+      { liesToldSession: 0, inflatedImpressionsSession: 0 },
+      (s) => {
+        chrome.storage.local.set({
+          liesToldSession: s.liesToldSession + lieCount,
+          inflatedImpressionsSession:
+            s.inflatedImpressionsSession + Math.round(impressionDelta),
+        });
+      }
+    );
+  }
+
+  window.__mathify = window.__mathify || {};
+  Object.assign(window.__mathify, {
+    inflate,
+    restore,
+    parseNum,
+    formatNum,
+    isInAllowlistedScope,
+    hasNearbyKeyword,
+    pathInScope,
+    NUM_RE,
+    ANALYTICS_KEYWORDS,
+  });
+
+  // Initial inflation pass — observer.js takes over for live updates.
+  function runInitial() {
+    chrome.storage.local.get({ enabled: true, multiplier: 100 }, (s) => {
+      if (s.enabled === false) return;
+      const n = inflate(document.body, s.multiplier);
+      if (n) console.log(`[mathify] initial inflation: ${n} node(s)`);
+    });
+  }
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", runInitial);
+  } else {
+    runInitial();
+  }
+
+  console.log("[mathify] inflate.js loaded");
 })();
