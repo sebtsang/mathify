@@ -166,6 +166,19 @@
     return v;
   }
 
+  // Canonical-per-metric lock. The first time we inflate a number with a
+  // recognizable metric key (e.g. "impressions"), we cache the resulting
+  // inflated value. Every subsequent number tagged with the same key gets
+  // the same inflated value — even if LinkedIn reports a different real
+  // underlying number on a different surface. This is what makes the demo
+  // hold up across pages: same metric label = same inflated number, no
+  // matter where it appears.
+  const canonicalValues = new Map();
+
+  function resetCanonical() {
+    canonicalValues.clear();
+  }
+
   function parseNum(s) {
     s = String(s).trim();
     if (/[KM]$/i.test(s)) {
@@ -239,7 +252,13 @@
         if (!Number.isFinite(val) || val === 0) return m;
         if (val < 1) return m;
         const wasCompact = /[KM]$/i.test(m);
-        const newVal = val * eff;
+        let newVal;
+        if (info.key && canonicalValues.has(info.key)) {
+          newVal = canonicalValues.get(info.key);
+        } else {
+          newVal = val * eff;
+          if (info.key) canonicalValues.set(info.key, newVal);
+        }
         totalImpressionDelta += newVal - val;
         return formatNum(newVal, wasCompact);
       });
@@ -285,6 +304,7 @@
   Object.assign(window.__mathify, {
     inflate,
     restore,
+    resetCanonical,
     parseNum,
     formatNum,
     isInAllowlistedScope,

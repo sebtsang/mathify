@@ -74,12 +74,16 @@
         if (wasEnabled && !enabled) {
           // Toggle OFF: restore originals.
           M.restore(document.body);
+          if (M.resetCanonical) M.resetCanonical();
           if (window.__mathifyViewers) window.__mathifyViewers.removeInjected();
           return;
         }
         if (prevMult !== currentMult || prevPreset !== preset || (!wasEnabled && enabled)) {
-          // Anything material changed — restore then re-inflate so we don't
-          // compound on already-inflated values.
+          // Anything material changed — reset the canonical-per-metric cache
+          // so the new multiplier/preset gets a fresh first-seen lock, then
+          // restore + re-inflate so we don't compound on already-inflated
+          // values.
+          if (M.resetCanonical) M.resetCanonical();
           M.restore(document.body);
           schedule();
         }
@@ -105,6 +109,7 @@
           newPreset !== preset ||
           JSON.stringify(newAi) !== JSON.stringify(aiDecisions);
         if (!changed) return;
+        if (M.resetCanonical) M.resetCanonical();
         if (enabled && !newEnabled) {
           M.restore(document.body);
           if (window.__mathifyViewers) window.__mathifyViewers.removeInjected();
