@@ -13,20 +13,15 @@
     return /\/me\/profile-views/.test(location.pathname);
   }
 
-  function findContainer() {
-    const main = document.querySelector('main[role="main"]') || document.querySelector("main");
-    if (!main) return null;
-    // Pick the first <ul> with multiple list items (likely the viewer list).
-    // Skip nav/menu lists.
-    const lists = main.querySelectorAll("ul");
-    for (const ul of lists) {
-      if (ul.closest('nav, [role="navigation"], [role="menubar"], [role="tablist"], header')) continue;
-      if (ul.children.length >= 1 && ul.children[0].tagName === "LI") {
-        return ul;
-      }
-    }
-    // Fallback: a div with multiple direct children that look like cards
-    return main;
+  function findMain() {
+    return (
+      document.querySelector('main[role="main"]') ||
+      document.querySelector("main") ||
+      document.querySelector('[role="main"]') ||
+      document.querySelector(".scaffold-layout__main") ||
+      document.querySelector("#main") ||
+      null
+    );
   }
 
   function avatarColor(seed) {
@@ -86,7 +81,7 @@
     return li;
   }
 
-  function inject(container, viewers) {
+  function inject(main, viewers) {
     const section = document.createElement("section");
     section.setAttribute(MARK, "1");
     section.setAttribute("data-mathify-skip", "1");
@@ -107,7 +102,7 @@
     viewers.forEach((v, i) => list.appendChild(buildRow(v, i)));
     section.appendChild(list);
 
-    container.parentElement.insertBefore(section, container);
+    main.insertBefore(section, main.firstChild);
   }
 
   async function maybeInject() {
@@ -129,14 +124,21 @@
 
     injecting = true;
     try {
-      const container = findContainer();
-      if (!container) return;
+      const main = findMain();
+      if (!main) {
+        console.log("[mathify] viewers: no main element found");
+        return;
+      }
       const viewers = await window.__mathifyGemini.getFakeViewers();
-      if (!viewers || !viewers.length) return;
+      if (!viewers || !viewers.length) {
+        console.log("[mathify] viewers: empty viewer list");
+        return;
+      }
       // double-check after async hop: still on the right page, no race injection
       if (!shouldRun()) return;
       if (document.querySelector(`[${MARK}]`)) return;
-      inject(container, viewers);
+      inject(main, viewers);
+      console.log("[mathify] viewers: injected", viewers.length);
     } catch (e) {
       console.warn("[mathify] viewers inject error", e);
     } finally {

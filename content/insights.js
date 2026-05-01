@@ -14,19 +14,21 @@
     return /^\/in\/[^/]+\/?$/.test(location.pathname);
   }
 
+  // We anchor to whichever label LinkedIn uses for the private dashboard tile:
+  // "Your dashboard", "Analytics" (newer), or just the "Private to you" subtitle.
+  const ANCHOR_LABELS = ["your dashboard", "analytics", "private to you"];
+
   function findAnchor() {
-    // Walk text nodes looking for a leaf "Your dashboard" label, then return
-    // the nearest section/aside ancestor.
     const tw = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, {
-      acceptNode: (n) =>
-        n.nodeValue && /your dashboard/i.test(n.nodeValue.trim())
+      acceptNode: (n) => {
+        const t = (n.nodeValue || "").trim().toLowerCase();
+        return ANCHOR_LABELS.includes(t)
           ? NodeFilter.FILTER_ACCEPT
-          : NodeFilter.FILTER_REJECT,
+          : NodeFilter.FILTER_REJECT;
+      },
     });
     let n;
     while ((n = tw.nextNode())) {
-      const t = (n.nodeValue || "").trim().toLowerCase();
-      if (t !== "your dashboard") continue;
       let cur = n.parentElement;
       for (let i = 0; i < 8 && cur; i++) {
         if (cur.tagName === "SECTION" || cur.tagName === "ASIDE") return cur;
