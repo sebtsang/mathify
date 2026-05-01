@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="frame">
+    <header>
+      <div class="logo">MATHIFY<span class="cursor">_</span></div>
+      <div class="subtitle">v0.1.0 // unverifiable metrics suite</div>
+    </header>
+
+    <section class="power">
+      <label class="switch">
+        <input type="checkbox" id="enabled" checked>
+        <span class="slider"></span>
+      </label>
+      <div class="power-label">
+        <div class="power-state" id="powerState">ACTIVE</div>
+        <div class="power-hint">numbers no one else can see are being adjusted</div>
+      </div>
+    </section>
+
+    <section class="presets">
+      <div class="section-title">MULTIPLIER</div>
+      <div class="preset-grid">
+        <button class="preset" data-mult="1.5">
+          <div class="preset-name">Whisper</div>
+          <div class="preset-mult">1.5&times;</div>
+          <div class="preset-tag">just enough to be plausible</div>
+        </button>
+        <button class="preset" data-mult="10">
+          <div class="preset-name">Subtle Flex</div>
+          <div class="preset-mult">10&times;</div>
+          <div class="preset-tag">for when you need it on a call</div>
+        </button>
+        <button class="preset selected" data-mult="100">
+          <div class="preset-name">Thought Leader</div>
+          <div class="preset-mult">100&times;</div>
+          <div class="preset-tag">you write &ldquo;thoughts&rdquo; now</div>
+        </button>
+        <button class="preset" data-mult="1000">
+          <div class="preset-name">Definitely Lying</div>
+          <div class="preset-mult">1000&times;</div>
+          <div class="preset-tag">committed to the bit</div>
+        </button>
+      </div>
+
+      <div class="custom-row">
+        <label for="customMult" class="custom-label">CUSTOM</label>
+        <input type="range" id="customMult" min="1" max="9999" value="100">
+        <output id="customOut">100&times;</output>
+      </div>
+    </section>
+
+    <section class="effects">
+      <div class="section-title">GEMINI EFFECTS</div>
+      <label class="toggle">
+        <input type="checkbox" id="injectViewers" checked>
+        <span>Replace &ldquo;Who viewed your profile&rdquo; with impressive fakes</span>
+      </label>
+      <label class="toggle">
+        <input type="checkbox" id="injectInsights" checked>
+        <span>Inject AI Insights line on dashboard</span>
+      </label>
+    </section>
+
+    <section class="stats">
+      <div class="section-title">SESSION STATS</div>
+      <div class="stat-row">
+        <span class="stat-label">Lies told this session</span>
+        <span class="stat-val" id="statLies">0</span>
+      </div>
+      <div class="stat-row">
+        <span class="stat-label">Total inflated impressions</span>
+        <span class="stat-val" id="statImpressions">0</span>
+      </div>
+      <div class="stat-row">
+        <span class="stat-label">Numbers Mathify refused to touch</span>
+        <span class="stat-val" id="statRefused">3</span>
+      </div>
+    </section>
+
+    <footer>
+      <div>In memory of the ones</div>
+      <div>who got caught manually.</div>
+    </footer>
+  </div>
+  <script src="popup.js"></script>
+</body>
+</html>

@@ -1,0 +1,5 @@
+/* content/styles.css — Mathify-injected DOM styling. Filled in H3. */
+
+[data-mathify-injected] {
+  /* nothing yet — H3 will add fake-viewer row + insights line styling */
+}

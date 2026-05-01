@@ -1,0 +1,31 @@
+{
+  "manifest_version": 3,
+  "name": "Mathify",
+  "version": "0.1.0",
+  "description": "A Chrome extension that only lies about the numbers nobody else can see.",
+  "permissions": ["storage", "notifications"],
+  "host_permissions": [
+    "https://www.linkedin.com/*",
+    "https://generativelanguage.googleapis.com/*"
+  ],
+  "background": {
+    "service_worker": "background/service_worker.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://www.linkedin.com/*"],
+      "js": [
+        "content/inflate.js",
+        "content/viewers.js",
+        "content/insights.js",
+        "content/observer.js"
+      ],
+      "css": ["content/styles.css"],
+      "run_at": "document_idle"
+    }
+  ],
+  "action": {
+    "default_popup": "popup/popup.html",
+    "default_title": "Mathify"
+  }
+}
