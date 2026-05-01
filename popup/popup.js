@@ -74,7 +74,7 @@ function load() {
     els.statLies.textContent = (s.liesToldSession || 0).toLocaleString();
     els.statImpressions.textContent = (s.inflatedImpressionsSession || 0).toLocaleString();
     if (s.preset === "ai") {
-      selectAI(s.aiDecisions, s.aiVoice, s.aiReasoning, s.aiSource);
+      selectAI(s.aiDecisions, s.aiVoice, s.aiReasoning, s.aiSource, s.aiError);
     } else {
       selectPreset(s.multiplier);
     }
@@ -101,7 +101,7 @@ function selectPreset(mult) {
   els.aiSource.className = "preset-ai-source";
 }
 
-function selectAI(decisions, voice, reasoning, source) {
+function selectAI(decisions, voice, reasoning, source, errorMessage) {
   els.presets.forEach((p) => {
     if (p.dataset.mult === "ai") return;
     p.classList.remove("selected");
@@ -113,7 +113,7 @@ function selectAI(decisions, voice, reasoning, source) {
     els.aiStatus.textContent = `~${median}× median`;
     els.aiVoice.textContent = voice ? `“${voice}”` : "";
     els.aiDetail.textContent = reasoning || describeDecisions(decisions);
-    setSource(source);
+    setSource(source, errorMessage);
   } else {
     els.aiStatus.textContent = "active";
     els.aiVoice.textContent = "";
@@ -123,20 +123,29 @@ function selectAI(decisions, voice, reasoning, source) {
   }
 }
 
-function setSource(source) {
+function setSource(source, errorMessage) {
   if (source === "live") {
     els.aiSource.textContent = "✓ live from gemini-2.5-flash";
     els.aiSource.className = "preset-ai-source live";
   } else if (source === "fallback") {
-    els.aiSource.textContent = "⚠ fallback — gemini api key invalid (check lib/config.js)";
+    const detail = errorMessage ? truncate(errorMessage, 140) : "key invalid";
+    els.aiSource.textContent = `⚠ fallback (${detail})`;
+    els.aiSource.title = errorMessage || "";
     els.aiSource.className = "preset-ai-source fallback";
   } else if (source === "error") {
-    els.aiSource.textContent = "⚠ fallback — gemini error (see console)";
+    const detail = errorMessage ? truncate(errorMessage, 140) : "see console";
+    els.aiSource.textContent = `⚠ fallback (${detail})`;
+    els.aiSource.title = errorMessage || "";
     els.aiSource.className = "preset-ai-source error";
   } else {
     els.aiSource.textContent = "";
     els.aiSource.className = "preset-ai-source";
   }
+}
+
+function truncate(s, n) {
+  if (typeof s !== "string") return "";
+  return s.length > n ? s.slice(0, n - 1) + "…" : s;
 }
 
 function medianValue(d) {
@@ -290,13 +299,13 @@ async function activateAI() {
 
   let result;
   let source;
-  let lastError = null;
+  let errorMessage = null;
   try {
     result = await callGeminiForDecisions();
     source = "live";
   } catch (e) {
     console.warn("[mathify] AI Decides fallback:", e.message);
-    lastError = e.message;
+    errorMessage = e.message;
     result = fallbackProfile();
     if (e.message === "no-key") source = "fallback";
     else if (/\b401\b|\b403\b|UNAUTHENTICATED|PERMISSION_DENIED/.test(e.message)) source = "fallback";
@@ -310,9 +319,10 @@ async function activateAI() {
       aiVoice: result.voice,
       aiReasoning: result.reasoning,
       aiSource: source,
+      aiError: errorMessage,
     },
     () => {
-      selectAI(result.multipliers, result.voice, result.reasoning, source);
+      selectAI(result.multipliers, result.voice, result.reasoning, source, errorMessage);
       broadcastAndReload();
     }
   );
