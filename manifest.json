@@ -19,7 +19,6 @@
         "lib/config.js",
         "lib/gemini.js",
         "content/inflate.js",
-        "content/viewers.js",
         "content/observer.js"
       ],
       "css": ["content/styles.css"],

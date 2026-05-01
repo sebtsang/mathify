@@ -3,7 +3,6 @@ const els = {
   powerState: document.getElementById("powerState"),
   customMult: document.getElementById("customMult"),
   customOut: document.getElementById("customOut"),
-  injectViewers: document.getElementById("injectViewers"),
   presets: document.querySelectorAll(".preset"),
   presetAI: document.getElementById("presetAI"),
   aiStatus: document.getElementById("aiStatus"),
@@ -23,7 +22,6 @@ const DEFAULTS = {
   aiVoice: null,
   aiReasoning: null,
   aiSource: null,
-  injectViewers: true,
   liesToldSession: 0,
   inflatedImpressionsSession: 0,
 };
@@ -70,11 +68,10 @@ function load() {
     setPowerLabel(s.enabled);
     els.customMult.value = s.multiplier;
     els.customOut.innerHTML = `${formatMult(s.multiplier)}&times;`;
-    els.injectViewers.checked = s.injectViewers;
     els.statLies.textContent = (s.liesToldSession || 0).toLocaleString();
     els.statImpressions.textContent = (s.inflatedImpressionsSession || 0).toLocaleString();
     if (s.preset === "ai") {
-      selectAI(s.aiDecisions, s.aiVoice, s.aiReasoning, s.aiSource, s.aiError);
+      selectAI(s.aiDecisions, s.aiVoice, s.aiReasoning, s.aiSource, s.aiError, s.aiModel);
     } else {
       selectPreset(s.multiplier);
     }
@@ -101,7 +98,7 @@ function selectPreset(mult) {
   els.aiSource.className = "preset-ai-source";
 }
 
-function selectAI(decisions, voice, reasoning, source, errorMessage) {
+function selectAI(decisions, voice, reasoning, source, errorMessage, model) {
   els.presets.forEach((p) => {
     if (p.dataset.mult === "ai") return;
     p.classList.remove("selected");
@@ -113,7 +110,7 @@ function selectAI(decisions, voice, reasoning, source, errorMessage) {
     els.aiStatus.textContent = `~${median}× median`;
     els.aiVoice.textContent = voice ? `“${voice}”` : "";
     els.aiDetail.textContent = reasoning || describeDecisions(decisions);
-    setSource(source, errorMessage);
+    setSource(source, errorMessage, model);
   } else {
     els.aiStatus.textContent = "active";
     els.aiVoice.textContent = "";
@@ -123,9 +120,9 @@ function selectAI(decisions, voice, reasoning, source, errorMessage) {
   }
 }
 
-function setSource(source, errorMessage) {
+function setSource(source, errorMessage, model) {
   if (source === "live") {
-    els.aiSource.textContent = "✓ live from gemini-2.5-flash";
+    els.aiSource.textContent = `✓ live from ${model || "gemini"}`;
     els.aiSource.className = "preset-ai-source live";
   } else if (source === "fallback") {
     const detail = errorMessage ? truncate(errorMessage, 140) : "key invalid";
@@ -243,13 +240,16 @@ function geminiEndpoint(key, model) {
   };
 }
 
-async function callGeminiForDecisions() {
-  const cfg = window.MATHIFY_CONFIG || {};
-  const key = cfg.GEMINI_API_KEY;
-  if (!key || key === "PASTE_YOUR_KEY_HERE") {
-    throw new Error("no-key");
-  }
-  const model = cfg.GEMINI_MODEL || "gemini-2.5-flash";
+// Errors that should advance to the next fallback model rather than failing
+// outright. 429 = quota exhausted on this model, 503 = model overloaded,
+// 500 = transient. Auth errors (401/403) are NOT in this list because they
+// won't be fixed by switching models.
+function isRetryableModelError(msg) {
+  return /\b(429|503|500|RESOURCE_EXHAUSTED|UNAVAILABLE|INTERNAL)\b/i.test(msg) ||
+         /quota|overloaded|high demand|rate limit/i.test(msg);
+}
+
+async function callGeminiOnce(model, key) {
   const ep = geminiEndpoint(key, model);
   console.log(`[mathify] gemini call: ${ep.flavor} → ${model}`);
   const res = await fetch(ep.url, {
@@ -296,7 +296,36 @@ async function callGeminiForDecisions() {
   }
   if (typeof parsed.voice !== "string" || !parsed.voice) parsed.voice = "Unnamed Voice";
   if (typeof parsed.reasoning !== "string" || !parsed.reasoning) parsed.reasoning = "Gemini's choice.";
+  parsed._model = model;
   return parsed;
+}
+
+async function callGeminiForDecisions() {
+  const cfg = window.MATHIFY_CONFIG || {};
+  const key = cfg.GEMINI_API_KEY;
+  if (!key || key === "PASTE_YOUR_KEY_HERE") {
+    throw new Error("no-key");
+  }
+  const primary = cfg.GEMINI_MODEL || "gemini-flash-lite-latest";
+  const chain = [primary, ...(Array.isArray(cfg.GEMINI_MODEL_FALLBACKS) ? cfg.GEMINI_MODEL_FALLBACKS : [])]
+    .filter((v, i, a) => v && a.indexOf(v) === i); // de-dupe
+  let lastErr = null;
+  for (let i = 0; i < chain.length; i++) {
+    const model = chain[i];
+    try {
+      return await callGeminiOnce(model, key);
+    } catch (e) {
+      lastErr = e;
+      const retryable = isRetryableModelError(e.message);
+      const hasMore = i < chain.length - 1;
+      if (retryable && hasMore) {
+        console.warn(`[mathify] ${model} failed (${e.message.slice(0, 80)}), trying ${chain[i + 1]}`);
+        continue;
+      }
+      throw e;
+    }
+  }
+  throw lastErr || new Error("gemini: all models exhausted");
 }
 
 async function activateAI() {
@@ -327,17 +356,28 @@ async function activateAI() {
     else source = "error";
   }
 
+  // AI Decides flows through the SAME multiplier path as Math Mode / Custom.
+  // We compute one number (median of the AI's per-metric picks) and write it
+  // to `multiplier` — that's the slider value. The per-metric multipliers
+  // are kept in `aiDecisions` purely for the popup's display ("imp 87× ·
+  // reach 72×"). No special AI path in inflate.js, so there's nothing to get
+  // stuck on a stale per-metric value.
+  const aiMult = medianValue(result.multipliers);
   chrome.storage.local.set(
     {
       preset: "ai",
+      multiplier: aiMult,
       aiDecisions: result.multipliers,
       aiVoice: result.voice,
       aiReasoning: result.reasoning,
       aiSource: source,
       aiError: errorMessage,
+      aiModel: result._model || null,
     },
     () => {
-      selectAI(result.multipliers, result.voice, result.reasoning, source, errorMessage);
+      els.customMult.value = aiMult;
+      els.customOut.innerHTML = `${formatMult(aiMult)}&times;`;
+      selectAI(result.multipliers, result.voice, result.reasoning, source, errorMessage, result._model);
       broadcastAndReload();
     }
   );
@@ -367,9 +407,5 @@ els.presets.forEach((p) => {
 });
 
 els.presetAI.addEventListener("click", activateAI);
-
-els.injectViewers.addEventListener("change", () => {
-  chrome.storage.local.set({ injectViewers: els.injectViewers.checked }, broadcast);
-});
 
 document.addEventListener("DOMContentLoaded", load);

@@ -17,6 +17,70 @@
   let enabled = true;
   let preset = null;
   let aiDecisions = null;
+  let lastPath = location.pathname + location.search;
+
+  // Force every LinkedIn SPA navigation to be a full page load. Inflation
+  // works perfectly on a fresh render but is fragile across LinkedIn's
+  // in-place route swaps. Rather than fight the SPA, we just turn it off:
+  // override history.pushState in the page's main world to call
+  // location.assign() instead, which forces a full reload at the new URL.
+  // Content script restarts on the new page → numbers inflate correctly.
+  // Trade-off is a slower nav (full HTTP round-trip vs in-place hydrate)
+  // but for the demo and for users who actually want this to work, that's
+  // an acceptable cost.
+  function injectFullReloadOnNav() {
+    try {
+      const s = document.createElement("script");
+      s.textContent = `(function(){
+        function maybeReload(url) {
+          if (!url || typeof url !== 'string') return false;
+          try {
+            var resolved = new URL(url, location.href).href;
+            if (resolved !== location.href) {
+              location.assign(resolved);
+              return true;
+            }
+          } catch (e) {}
+          return false;
+        }
+        var origPush = history.pushState;
+        history.pushState = function(state, title, url) {
+          if (maybeReload(url)) return;
+          return origPush.apply(this, arguments);
+        };
+        var origReplace = history.replaceState;
+        history.replaceState = function(state, title, url) {
+          if (maybeReload(url)) return;
+          return origReplace.apply(this, arguments);
+        };
+      })();`;
+      (document.head || document.documentElement).appendChild(s);
+      s.remove();
+    } catch (e) {
+      console.warn("[mathify] full-reload-on-nav inject failed", e);
+    }
+  }
+  injectFullReloadOnNav();
+
+  // Belt-and-suspenders: intercept link clicks at the capture phase before
+  // LinkedIn's router sees them, force a full page load. Modifier-click and
+  // middle-click pass through so users can still open links in new tabs.
+  document.addEventListener("click", (e) => {
+    if (e.defaultPrevented) return;
+    if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+    if (e.button !== 0) return;
+    const link = e.target.closest && e.target.closest("a[href]");
+    if (!link) return;
+    if (link.target && link.target !== "_self") return;
+    let url;
+    try { url = new URL(link.href, location.href); } catch (_) { return; }
+    if (url.origin !== location.origin) return;
+    if (url.pathname === location.pathname && url.search === location.search && url.hash === location.hash) return;
+    if (url.pathname === location.pathname && url.search === location.search) return; // same page, hash only
+    e.preventDefault();
+    e.stopPropagation();
+    location.assign(url.href);
+  }, true);
 
   function schedule() {
     if (scheduled) return;
@@ -24,10 +88,24 @@
     requestAnimationFrame(() => {
       scheduled = false;
       if (!enabled) return;
+      const path = location.pathname + location.search;
+      if (path !== lastPath) {
+        lastPath = path;
+        try { M.restore(document.body); } catch (_) {}
+      }
       try {
         M.inflate(document.body, currentMult, preset, aiDecisions);
-        if (window.__mathifyViewers) window.__mathifyViewers.maybeInject();
       } catch (e) {
+        // Benign: fires after the user reloads the unpacked extension while
+        // LinkedIn is still open — old content scripts keep ticking until the
+        // page itself reloads. Quiet log instead of noisy stack trace.
+        if (/Extension context invalidated/i.test(e && e.message)) {
+          if (!window.__mathifyCtxWarned) {
+            console.log("[mathify] extension context invalidated — reload the LinkedIn tab to re-arm");
+            window.__mathifyCtxWarned = true;
+          }
+          return;
+        }
         console.error("[mathify] observer tick error", e);
       }
     });
@@ -55,6 +133,10 @@
     });
     // Also catch the case where the script loads after the page renders.
     schedule();
+    // Periodic re-scan as a safety net for slow-loading content. Cheap —
+    // schedule() debounces via rAF, so this only does work when there's
+    // actually something to inflate.
+    setInterval(schedule, 1500);
   });
 
   // React to settings changes pushed from the popup or storage.
@@ -75,7 +157,6 @@
           // Toggle OFF: restore originals.
           M.restore(document.body);
           if (M.resetCanonical) M.resetCanonical();
-          if (window.__mathifyViewers) window.__mathifyViewers.removeInjected();
           return;
         }
         if (prevMult !== currentMult || prevPreset !== preset || (!wasEnabled && enabled)) {
@@ -110,12 +191,7 @@
           JSON.stringify(newAi) !== JSON.stringify(aiDecisions);
         if (!changed) return;
         if (M.resetCanonical) M.resetCanonical();
-        if (enabled && !newEnabled) {
-          M.restore(document.body);
-          if (window.__mathifyViewers) window.__mathifyViewers.removeInjected();
-        } else {
-          M.restore(document.body);
-        }
+        M.restore(document.body);
         enabled = newEnabled;
         currentMult = newMult;
         preset = newPreset;

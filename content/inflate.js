@@ -121,14 +121,17 @@
     return false;
   }
 
-  // True if the immediate row containing this node mentions a public-mirror
+  // True if the IMMEDIATE row containing this node mentions a public-mirror
   // metric (reactions, comments, reposts, etc.) — leave these alone.
+  // Only depth 0-1 so we don't pick up sibling action-button rows ("Like
+  // Comment Repost Send") under a shared post-card footer; those are button
+  // labels, not counter metrics, but they match the blocked keywords.
   function isBlockedNear(parent) {
     let cur = parent;
     let d = 0;
-    while (cur && d < 3) {
+    while (cur && d < 2) {
       const t = (cur.textContent || "").trim();
-      if (t.length < 100 && BLOCKED_KEYWORDS.test(t)) return true;
+      if (t.length < 80 && BLOCKED_KEYWORDS.test(t)) return true;
       cur = cur.parentElement;
       d++;
     }
@@ -157,26 +160,17 @@
     return Math.max(1, 1 + (base - 1) * ratio);
   }
 
-  // When AI Decides is active, look up the per-metric multiplier directly
-  // from the AI's decision object. Falls back to the static ratio if missing.
-  function aiMultiplier(aiDecisions, key, fallback) {
-    if (!aiDecisions || !key) return fallback;
-    const v = aiDecisions[key];
-    if (typeof v !== "number" || !Number.isFinite(v) || v < 1) return fallback;
-    return v;
-  }
-
-  // Canonical-per-metric lock. The first time we inflate a number with a
-  // recognizable metric key (e.g. "impressions"), we cache the resulting
-  // inflated value. Every subsequent number tagged with the same key gets
-  // the same inflated value — even if LinkedIn reports a different real
-  // underlying number on a different surface. This is what makes the demo
-  // hold up across pages: same metric label = same inflated number, no
-  // matter where it appears.
-  const canonicalValues = new Map();
-
+  // No canonical lock. Each tick, every number multiplies by its current
+  // (preset or AI) multiplier. The data-mathify mark prevents double-
+  // multiplication within a page session; SPA nav strips marks via the
+  // path-change handler in observer.js, so a navigated-to page gets a fresh
+  // inflate. Cross-page numerical consistency is intentionally NOT enforced —
+  // LinkedIn itself reports different aggregations for the same metric on
+  // different surfaces, and trying to lock them produced staleness bugs that
+  // were worse than the inconsistency they were meant to fix.
   function resetCanonical() {
-    canonicalValues.clear();
+    // Kept as a no-op so observer.js can call it without checking for it.
+    // Removing the call sites everywhere would just be churn.
   }
 
   function parseNum(s) {
@@ -204,21 +198,32 @@
     return n.toLocaleString("en-US");
   }
 
-  function isJunkParent(parent) {
+  function isJunkParent(parent, node) {
     if (!parent) return true;
-    if (parent.dataset && parent.dataset.mathify === "1") return true;
     if (parent.closest && parent.closest("[data-mathify-skip]")) return true;
     const tag = parent.tagName;
     if (tag === "SCRIPT" || tag === "STYLE" || tag === "NOSCRIPT") return true;
     if (tag === "TIME") return true; // <time> elements are explicitly temporal
+    if (parent.dataset && parent.dataset.mathify === "1") {
+      // Stale mark: LinkedIn re-rendered this cell after we inflated it
+      // (SPA nav, async data load, hover refetch, etc.). If the current
+      // text isn't what we wrote, strip the mark so we can re-process.
+      // Without this check, navigating into a sub-page leaves the new
+      // page's number unprocessed because the parent still carries the
+      // skip flag from the previous page.
+      if (node && parent.dataset.mathifyInflated && node.nodeValue !== parent.dataset.mathifyInflated) {
+        delete parent.dataset.mathify;
+        delete parent.dataset.mathifyOrig;
+        delete parent.dataset.mathifyInflated;
+        return false;
+      }
+      return true;
+    }
     return false;
   }
 
   function inflate(root, mult, mode, aiDecisions) {
-    if (!root || !mult || mult === 1) {
-      // AI mode can still inflate even if base mult is 1
-      if (mode !== "ai" || !aiDecisions) return 0;
-    }
+    if (!root || !mult || mult === 1) return 0;
     let count = 0;
     let totalImpressionDelta = 0;
     const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
@@ -230,7 +235,7 @@
     let node;
     while ((node = walker.nextNode())) {
       const parent = node.parentElement;
-      if (isJunkParent(parent)) continue;
+      if (isJunkParent(parent, node)) continue;
       const text = node.nodeValue;
       if (looksLikeTime(text)) continue;
       if (!isInAllowlistedScope(node)) continue;
@@ -240,11 +245,7 @@
       if (!NUM_RE.test(text)) continue;
       NUM_RE.lastIndex = 0;
       const info = getMetricInfo(parent);
-      const baseEff = effectiveMultiplier(mult, info.ratio);
-      const eff =
-        mode === "ai"
-          ? aiMultiplier(aiDecisions, info.key, baseEff)
-          : baseEff;
+      const eff = effectiveMultiplier(mult, info.ratio);
       if (eff <= 1) continue;
       const original = text;
       const replaced = text.replace(NUM_RE, (m) => {
@@ -252,13 +253,7 @@
         if (!Number.isFinite(val) || val === 0) return m;
         if (val < 1) return m;
         const wasCompact = /[KM]$/i.test(m);
-        let newVal;
-        if (info.key && canonicalValues.has(info.key)) {
-          newVal = canonicalValues.get(info.key);
-        } else {
-          newVal = val * eff;
-          if (info.key) canonicalValues.set(info.key, newVal);
-        }
+        const newVal = val * eff;
         totalImpressionDelta += newVal - val;
         return formatNum(newVal, wasCompact);
       });
@@ -266,10 +261,19 @@
         if (!parent.dataset.mathifyOrig) parent.dataset.mathifyOrig = original;
         node.nodeValue = replaced;
         parent.dataset.mathify = "1";
+        // Store what we wrote so the next tick can detect if LinkedIn
+        // overwrote it (e.g. SPA nav into a sub-page reusing this cell).
+        parent.dataset.mathifyInflated = replaced;
         count++;
       }
     }
     if (count > 0) bumpStats(count, totalImpressionDelta);
+    if (count > 0) {
+      console.log(
+        `[mathify] inflate ${count} nodes on ${location.pathname} (mode=${mode || "static"}, mult=${mult})`,
+        "ai mults:", aiDecisions
+      );
+    }
     return count;
   }
 
@@ -312,6 +316,10 @@
     pathInScope,
     NUM_RE,
     ANALYTICS_KEYWORDS,
+    debug() {
+      console.log("[mathify] path:", location.pathname + location.search);
+      console.log("[mathify] marked nodes:", document.querySelectorAll("[data-mathify='1']").length);
+    },
   });
 
   // Initial inflation pass — observer.js takes over for live updates.
