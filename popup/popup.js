@@ -257,7 +257,12 @@ async function callGeminiForDecisions() {
     headers: ep.headers,
     body: JSON.stringify({
       contents: [{ role: "user", parts: [{ text: AI_PROMPT }] }],
-      generationConfig: { temperature: 1.1, maxOutputTokens: 512 },
+      generationConfig: {
+        temperature: 1.1,
+        maxOutputTokens: 4096,
+        responseMimeType: "application/json",
+        thinkingConfig: { thinkingBudget: 0 },
+      },
     }),
   });
   if (!res.ok) {
@@ -265,13 +270,23 @@ async function callGeminiForDecisions() {
     throw new Error(`gemini ${res.status}: ${body.slice(0, 200)}`);
   }
   const data = await res.json();
+  const candidate = data?.candidates?.[0];
   const text =
-    data?.candidates?.[0]?.content?.parts?.[0]?.text ||
-    data?.candidates?.[0]?.content?.parts?.map((p) => p.text).join("") ||
+    candidate?.content?.parts?.[0]?.text ||
+    candidate?.content?.parts?.map((p) => p.text).join("") ||
     "";
-  if (!text) throw new Error("gemini: empty response");
+  const finishReason = candidate?.finishReason;
+  if (!text) {
+    throw new Error(`gemini: empty response (finishReason=${finishReason || "none"})`);
+  }
   const cleaned = text.replace(/^```(?:json)?\s*/i, "").replace(/```\s*$/i, "").trim();
-  const parsed = JSON.parse(cleaned);
+  let parsed;
+  try {
+    parsed = JSON.parse(cleaned);
+  } catch (e) {
+    console.warn("[mathify] gemini raw text:", text);
+    throw new Error(`gemini parse fail (finish=${finishReason || "?"}, len=${text.length}): ${e.message}`);
+  }
   if (!parsed.multipliers || typeof parsed.multipliers !== "object") throw new Error("missing multipliers");
   const required = ["impressions", "membersReached", "profileViewers", "followersGained", "searchAppearances", "saves", "sends"];
   for (const k of required) {
