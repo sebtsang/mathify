@@ -3,6 +3,7 @@
 <head>
   <meta charset="utf-8">
   <link rel="stylesheet" href="popup.css">
+  <script src="../lib/config.js"></script>
 </head>
 <body>
   <div class="frame">
@@ -52,6 +53,15 @@
         <input type="range" id="customMult" min="1" max="9999" value="100">
         <output id="customOut">100&times;</output>
       </div>
+
+      <button class="preset preset-ai" data-mult="ai" id="presetAI">
+        <div class="preset-ai-row">
+          <span class="preset-ai-spark">&#x2728;</span>
+          <span class="preset-ai-name">AI Decides</span>
+          <span class="preset-ai-status" id="aiStatus">gemini picks per-metric</span>
+        </div>
+        <div class="preset-ai-detail" id="aiDetail">click to ask gemini for a fresh inflation profile</div>
+      </button>
     </section>
 
     <section class="effects">

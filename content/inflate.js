@@ -23,16 +23,17 @@
   // Keeps low-multiplier presets (Math Mode 1.5x) feeling subtle across all
   // metrics, while high multipliers (Thought Leader 100x) keep proportions
   // realistic — followers-gained-from-this-post stays believable, etc.
+  // The `key` lets AI Decides mode look up a per-metric multiplier by name.
   const METRIC_RATIOS = [
-    { re: /post\s+impressions?/i, ratio: 1.0 },
-    { re: /\bimpressions?/i, ratio: 1.0 },
-    { re: /members?\s+reached/i, ratio: 1.0 },
-    { re: /profile\s+viewers?/i, ratio: 0.25 },
-    { re: /profile\s+views?/i, ratio: 0.25 },
-    { re: /followers?\s+gained/i, ratio: 0.10 },
-    { re: /search\s+appearances?/i, ratio: 0.50 },
-    { re: /\bsaves?\b/i, ratio: 0.40 },
-    { re: /\bsends?\b/i, ratio: 0.30 },
+    { key: "impressions", re: /post\s+impressions?/i, ratio: 1.0 },
+    { key: "impressions", re: /\bimpressions?/i, ratio: 1.0 },
+    { key: "membersReached", re: /members?\s+reached/i, ratio: 1.0 },
+    { key: "profileViewers", re: /profile\s+viewers?/i, ratio: 0.25 },
+    { key: "profileViewers", re: /profile\s+views?/i, ratio: 0.25 },
+    { key: "followersGained", re: /followers?\s+gained/i, ratio: 0.10 },
+    { key: "searchAppearances", re: /search\s+appearances?/i, ratio: 0.50 },
+    { key: "saves", re: /\bsaves?\b/i, ratio: 0.40 },
+    { key: "sends", re: /\bsends?\b/i, ratio: 0.30 },
   ];
 
   // Time/date words we never want to multiply (e.g. "3 days ago", "12 min")
@@ -109,15 +110,11 @@
     return false;
   }
 
-  function looksLikeTime(parent) {
-    let cur = parent;
-    let d = 0;
-    while (cur && d < 2) {
-      const t = cur.textContent || "";
-      if (t.length < 200 && TIME_BLOCK.test(t)) return true;
-      cur = cur.parentElement;
-      d++;
-    }
+  // Only check the text node value itself. Walking up to ancestors caused
+  // false positives like "Past 7 days" subtitles blocking the post-impressions
+  // tile, since the row container included both "18,040" and "Past 7 days".
+  function looksLikeTime(textValue) {
+    if (TIME_BLOCK.test(textValue)) return true;
     return false;
   }
 
@@ -135,27 +132,35 @@
     return false;
   }
 
-  // Returns the per-metric multiplier ratio (1.0 = full base multiplier;
-  // <1 = scaled down). Determined by the closest label text in the row.
-  function getMetricRatio(parent) {
+  // Returns { key, ratio } for the closest metric label in the row.
+  function getMetricInfo(parent) {
     let cur = parent;
     let d = 0;
     while (cur && d < 3) {
       const t = (cur.textContent || "").trim();
       if (t.length < 200) {
         for (const m of METRIC_RATIOS) {
-          if (m.re.test(t)) return m.ratio;
+          if (m.re.test(t)) return { key: m.key, ratio: m.ratio };
         }
       }
       cur = cur.parentElement;
       d++;
     }
-    return 1.0;
+    return { key: null, ratio: 1.0 };
   }
 
   function effectiveMultiplier(base, ratio) {
     // Linear interp so base=1 stays 1 across all metrics.
     return Math.max(1, 1 + (base - 1) * ratio);
+  }
+
+  // When AI Decides is active, look up the per-metric multiplier directly
+  // from the AI's decision object. Falls back to the static ratio if missing.
+  function aiMultiplier(aiDecisions, key, fallback) {
+    if (!aiDecisions || !key) return fallback;
+    const v = aiDecisions[key];
+    if (typeof v !== "number" || !Number.isFinite(v) || v < 1) return fallback;
+    return v;
   }
 
   function parseNum(s) {
@@ -193,8 +198,11 @@
     return false;
   }
 
-  function inflate(root, mult) {
-    if (!root || !mult || mult === 1) return 0;
+  function inflate(root, mult, mode, aiDecisions) {
+    if (!root || !mult || mult === 1) {
+      // AI mode can still inflate even if base mult is 1
+      if (mode !== "ai" || !aiDecisions) return 0;
+    }
     let count = 0;
     let totalImpressionDelta = 0;
     const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
@@ -207,16 +215,20 @@
     while ((node = walker.nextNode())) {
       const parent = node.parentElement;
       if (isJunkParent(parent)) continue;
-      if (looksLikeTime(parent)) continue;
+      const text = node.nodeValue;
+      if (looksLikeTime(text)) continue;
       if (!isInAllowlistedScope(node)) continue;
       if (!hasNearbyKeyword(parent)) continue;
       if (isBlockedNear(parent)) continue;
-      const text = node.nodeValue;
       NUM_RE.lastIndex = 0;
       if (!NUM_RE.test(text)) continue;
       NUM_RE.lastIndex = 0;
-      const ratio = getMetricRatio(parent);
-      const eff = effectiveMultiplier(mult, ratio);
+      const info = getMetricInfo(parent);
+      const baseEff = effectiveMultiplier(mult, info.ratio);
+      const eff =
+        mode === "ai"
+          ? aiMultiplier(aiDecisions, info.key, baseEff)
+          : baseEff;
       if (eff <= 1) continue;
       const original = text;
       const replaced = text.replace(NUM_RE, (m) => {
@@ -281,11 +293,14 @@
 
   // Initial inflation pass — observer.js takes over for live updates.
   function runInitial() {
-    chrome.storage.local.get({ enabled: true, multiplier: 100 }, (s) => {
-      if (s.enabled === false) return;
-      const n = inflate(document.body, s.multiplier);
-      if (n) console.log(`[mathify] initial inflation: ${n} node(s)`);
-    });
+    chrome.storage.local.get(
+      { enabled: true, multiplier: 100, preset: null, aiDecisions: null },
+      (s) => {
+        if (s.enabled === false) return;
+        const n = inflate(document.body, s.multiplier, s.preset, s.aiDecisions);
+        if (n) console.log(`[mathify] initial inflation: ${n} node(s)`);
+      }
+    );
   }
 
   if (document.readyState === "loading") {

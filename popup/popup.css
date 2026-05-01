@@ -160,6 +160,78 @@ input:checked + .slider:before {
   letter-spacing: 0.3px;
 }
 
+.preset-ai {
+  width: 100%;
+  margin-top: 8px;
+  padding: 10px 12px;
+  background: linear-gradient(135deg, #1a1505 0%, #2a1f0a 50%, #1a1505 100%);
+  border: 1px solid #4a3a10;
+  display: block;
+  cursor: pointer;
+  font-family: inherit;
+  text-align: left;
+  color: #ddd;
+  transition: all 0.15s;
+}
+
+.preset-ai:hover {
+  border-color: #ffd700;
+  background: linear-gradient(135deg, #2a2008 0%, #3a2d10 50%, #2a2008 100%);
+}
+
+.preset-ai.selected {
+  border-color: #ffd700;
+  box-shadow: 0 0 0 1px #ffd70044, 0 0 12px #ffd70022;
+}
+
+.preset-ai.thinking {
+  animation: ai-pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes ai-pulse {
+  0%, 100% { border-color: #ffd700; box-shadow: 0 0 0 1px #ffd70044, 0 0 8px #ffd70033; }
+  50% { border-color: #fff5b8; box-shadow: 0 0 0 1px #fff5b888, 0 0 16px #ffd70066; }
+}
+
+.preset-ai-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.preset-ai-spark {
+  font-size: 14px;
+}
+
+.preset-ai-name {
+  font-size: 12px;
+  font-weight: 700;
+  color: #ffd700;
+  letter-spacing: 0.5px;
+}
+
+.preset-ai-status {
+  margin-left: auto;
+  font-size: 9px;
+  color: #888;
+  font-style: italic;
+}
+
+.preset-ai.selected .preset-ai-status,
+.preset-ai.thinking .preset-ai-status {
+  color: #ffd700;
+  font-style: normal;
+  font-weight: 600;
+}
+
+.preset-ai-detail {
+  margin-top: 4px;
+  font-size: 9px;
+  color: #999;
+  font-style: italic;
+  line-height: 1.4;
+}
+
 .custom-row {
   display: flex;
   align-items: center;
