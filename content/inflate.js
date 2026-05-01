@@ -39,15 +39,17 @@
   // Time/date words we never want to multiply (e.g. "3 days ago", "12 min")
   const TIME_BLOCK = /\b(ago|hr|hrs|min|mins|sec|secs|day|days|month|months|year|years|hour|hours|minute|minutes|just\s+now|·\s*\d+|st|nd|rd|th)\b/i;
 
-  // URL-pathname patterns that are in scope. /in/ is broad but safe: the
-  // ANALYTICS_KEYWORDS gate restricts which numbers actually inflate, and
-  // private-keyword phrases ("post impressions", "search appearances") only
-  // appear inside the user's own private dashboard tile.
+  // URL-pathname patterns that are unconditionally in scope. /in/ was
+  // intentionally removed: it caught the activity-feed post-card inline
+  // impression badges, producing cross-surface inconsistency (same post
+  // shows a different inflated number on analytics page vs. activity feed
+  // because LinkedIn reports different real aggregations there). The
+  // profile-page private dashboard tile still inflates via the "Analytics"
+  // / "private to you" container-hint match in ancestorHasHint.
   const ALLOWLISTED_PATHS = [
     /\/analytics(\/|$|\?)/,
     /\/me\/profile-views/,
     /\/dashboard\//,
-    /^\/in\//,
   ];
 
   // Text we look for on ancestor headings/labels to identify scope when path alone
