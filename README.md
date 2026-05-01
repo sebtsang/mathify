@@ -44,4 +44,4 @@ Google Gemini 3.1 Flash Lite, Chrome Extensions Manifest V3, vanilla JavaScript,
 
 ---
 
-In memory of the ones who got caught manually.
+In memory of the one who got caught.
