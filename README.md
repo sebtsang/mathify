@@ -2,7 +2,9 @@
 
 A Chrome extension that only lies about the numbers nobody else can see.
 
-The amateur version of a tool like this multiplies everything: followers, reactions, comments. The amateur version gets caught the moment a viewer opens LinkedIn on their phone and disproves it. Mathify is the professional version. It only edits the LinkedIn metrics that LinkedIn shows to you and you alone:
+**Scope: numbers only.** Mathify edits numeric metrics on LinkedIn. Nothing else. Post text, headlines, comments, names, job titles, company names, profile content, badges, and images are never touched. The only thing Mathify ever changes is a count.
+
+And not every count. Only the counts that LinkedIn shows to you and you alone:
 
 - Post analytics (impressions, members reached, profile viewers from this post, followers gained, saves, sends)
 - Profile dashboard tiles (search appearances, post impressions over time)
@@ -10,7 +12,7 @@ The amateur version of a tool like this multiplies everything: followers, reacti
 
 Public follower counts, public reaction, comment, and repost counts on posts, and badges are never touched.
 
-The numbers persist across page refresh and SPA navigation. That is the part most amateur lie tools fail at.
+The amateur version of a tool like this multiplies everything: followers, reactions, comments. The amateur version gets caught the moment a viewer opens LinkedIn on their phone and disproves it. Mathify is the professional version. It only changes private numeric metrics, and those numbers persist across page refresh and SPA navigation. That is the part most amateur lie tools fail at.
 
 ## Multiplier presets
 
